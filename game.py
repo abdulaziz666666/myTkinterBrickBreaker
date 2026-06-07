@@ -22,6 +22,8 @@ gameover = False
 score = 0
 lives = 3
 
+playerPadSpeed = 20
+xFactor = 1
 
 def movePlayerPad(key):
     if gameover:
@@ -31,11 +33,9 @@ def movePlayerPad(key):
     rectX2 = canvas.coords(playerPad)[2]
 
     if key.char == 'd' and rectX2 < width:
-        canvas.move(playerPad, 20, 0)
+        canvas.move(playerPad, playerPadSpeed*xFactor, 0)
     if key.char == 'a' and rectX1 > 0:
-        canvas.move(playerPad, -20, 0)
-
-    
+        canvas.move(playerPad, -playerPadSpeed*xFactor, 0)
 
 def destroyCollidedBlock(yVelocity):
     global blocks, gameover, score
@@ -112,7 +112,6 @@ def ballMovementLogic(xVelocity = 10, yVelocity = -10):
                 canvas.delete(ball)
                 xVelocity, yVelocity = spawnBall(yVelocity)
 
-
         if yVelocity > 0 and ball in canvas.find_overlapping(*canvas.coords(playerPad)):
             yVelocity = -abs(yVelocity)
 
@@ -148,21 +147,30 @@ def play():
 
     gameWindow = Toplevel(window, width=width, height=height)
     gameWindow.resizable(False, False)
-
+    '''
+    حدد القيمة الأساسية واضربها في باقي العوامل
+    عشان مهما تغيرت اعدادات اللعبة تكون مضبوطة
+    +
+    اكتب ملاحظات وارفع على قيت هب واسجل مقطع ختامي
+    +
+    عدد المستطيلات حسب العرض
+    '''
     canvas = Canvas(gameWindow, width=width, height=height, bg='black')
     canvas.pack()
 
-    playerPad = canvas.create_rectangle(width/2 - 50,
-                                height-30,
-                                width/2 + 50,
-                                height-10,
-                                fill='white')
+    padWidth = 100
+    padWidth = padWidth/2 * xFactor
+    playerPad = canvas.create_rectangle(width/2 - padWidth,
+                                        height-30,
+                                        width/2 + padWidth,
+                                        height-10,
+                                        fill='white')
 
     ball = canvas.create_oval(10,
-                            height-10,
-                            40,
-                            height-40,
-                            fill='red')
+                              height-10,
+                              40,
+                              height-40,
+                              fill='red')
     
     scoreLabel = Label(gameWindow, text=str(score), bg='black', fg='white', font=('', 16, 'bold'))
     livesLabel = Label(gameWindow, text=f'{str(lives)} :المحاولات', bg='black', fg='white', font=('', 16, 'bold'))
@@ -191,7 +199,7 @@ def checkValuesValidaty(*args: int):
     verticalSpaceNeeded = GAP + (BLOCK_HEIGHT + GAP) * args[3] 
 
     if horizontalSpaceNeeded >= args[0] + 20 or verticalSpaceNeeded >= args[1] // 2:
-        showerror('خطأ', 'عرض/طول لوحة اللعب غير مناسب\nغير بعض القيم، كالطول والعرض، أو عدد المستطيلات والصفوف')
+        showerror('خطأ', 'عرض/طول لوحة اللعب لا تكفي\nجرب تغيير بعض القيم، كالطول والعرض، أو عدد المستطيلات والصفوف')
         return False
 
                         #  25 >= args[2] >= 10, # checked before
@@ -203,11 +211,11 @@ def checkValuesValidaty(*args: int):
     if valuesAreValid:
         return True
     else:
-        showerror('خطأ', 'يجب إدخال قيم معقولة ومتناسبة')
+        showerror('خطأ', 'يجب إدخال قيم متناسبة مع النطاق المذكور')
         return False
 
 def saveSettings(*args):
-    global settingsWindow, width, height, blocksNumber, rowsNumber
+    global settingsWindow, width, height, blocksNumber, rowsNumber, xFactor
 
     try:
         args = [int(arg) for arg in args]
@@ -215,7 +223,8 @@ def saveSettings(*args):
         showerror('خطأ', 'يجب إدخال القيم على صورة أعداد صحيحة فقط')
     else:
         if checkValuesValidaty(*args):
-            width, height, blocksNumber, rowsNumber = args    
+            xFactor = args[0] / width
+            width, height, blocksNumber, rowsNumber = args
             settingsWindow.destroy()
 
 def openSettings():
@@ -227,8 +236,8 @@ def openSettings():
     settingsWindow.minsize(250, 300)
     settingsWindow.maxsize(250, 300)
 
-    settingsList = {('عرض لوحة اللعب', width): Entry(settingsWindow, justify='center'),
-                    ('طول لوحة اللعب', height): Entry(settingsWindow, justify='center'),
+    settingsList = {('عرض لوحة اللعب (النطاق 600-1200)', width): Entry(settingsWindow, justify='center'),
+                    ('طول لوحة اللعب (النطاق 400-800)', height): Entry(settingsWindow, justify='center'),
                     ('عدد المربعات لكل صف', blocksNumber): Entry(settingsWindow, justify='center'),
                     ('عدد الصفوف', rowsNumber): Entry(settingsWindow, justify='center')}
     
