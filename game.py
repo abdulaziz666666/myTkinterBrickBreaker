@@ -1,197 +1,263 @@
 
 # .أنوه أن اللعبة قد لا تكون معيارًا لتقييم التنظيم فيها
 
-from tkinter import Tk, Canvas, Label, Button, Toplevel, PhotoImage, Entry
-from random import randint, choices
+from tkinter import Tk, Canvas, Label, Button, Toplevel, PhotoImage, Entry, Checkbutton, BooleanVar
+from random import randint, choice, choices
 from tkinter.messagebox import showerror
+from playsound import playsound
+from threading import Thread
 
+# Canvas Dimensions
+canvas_dimensions = {'width': 600, 'height': 400}
 
-width = 600
-height = 400
-
+# Blocks Values
+GAP = 10
 BLOCK_WIDTH = 50
 BLOCK_HEIGHT = 30
-GAP = 10
-blocksNumber = 10
-rowsNumber = 3
+blocks_data = {'blocks number': 10, 'rows number': 3, 'blocks list': []}
 
-HEXADECIMALS = ['1', '2', '3', '4', '5', '6', '7', '8', '9',
-               'a', 'b', 'c', 'd', 'e', 'f']
-DELAY = 50
+# In-game Variables
 gameover = False
 score = 0
 lives = 3
 
-playerPadSpeed = 20
-xFactor = 1
+# Constants
+BTN_STYLING_STYLE = {'bg': 'black', 'fg': 'lightblue', 'relief': 'sunken'}
+WIN_LOSE_LABEL_STYLE = {'win': {'text': '!لقد فزت', 'fg': '#1B8B5C'},
+                             'lose': {'text': '!لقد خسرت', 'fg': 'red'}}
+BTN_PACK = {'expand': True, 'fill': 'both', 'ipady': 20}
+WIN_LOSE_LABEL_PACK = {'expand': True, 'fill': 'both', 'padx': 200, 'pady': 100}
 
-def movePlayerPad(key):
+HEXADECIMALS = '123456789ABCDEF'
+DELAY = 50
+player_pad_width = 100 # Might be affected by width_factor
+PLAYER_PAD_SPEED = 20 # The overall value of player pad speed might be affected by width_factor
+MAXIMUM_Y_VELOCITY = 20 # Any value over that isn't capable. Tkinter can't process fast movements
+
+
+def play_sfx(sfxName: str):
+    '''
+    It plays sound effects from the folder 'sfx'.
+    '''
+    try:
+
+        if sfxName == 'lose':
+            sfxName = choice(('los', 'lose2', 'lose3'))
+        
+        playsound(f'sfx/{sfxName}.wav', block=False)
+
+    except Exception as e: # Just to prevent any error from occurrence. Its just a sound effect anyway.
+        print(e)
+
+def check(case: str, condition: bool):
+    '''
+    It returns True if CONDITION so.
+    Otherwise, it returns False.\n
+    It also style & pack a label with args of CASE from WIN_LOSE_LABEL(STYLE/PACK).
+    '''
+    if condition:
+        Thread(target=lambda: play_sfx(case)).start()
+        canvas.destroy()
+        Label(game_window, WIN_LOSE_LABEL_STYLE[case], font=('', 16, 'bold')).pack(WIN_LOSE_LABEL_PACK)
+        return True
+    else:
+        return False
+
+def move_player_pad(key):
+    '''
+    It controls the movement of player's pad (striker)\n
+    depending on any keyboard input which's represented
+    by key.
+    '''
     if gameover:
         return 
     
-    rectX1 = canvas.coords(playerPad)[0]
-    rectX2 = canvas.coords(playerPad)[2]
+    pad_x1 = canvas.coords(player_pad)[0]
+    pad_x2 = canvas.coords(player_pad)[2]
 
-    if key.char == 'd' and rectX2 < width:
-        canvas.move(playerPad, playerPadSpeed*xFactor, 0)
-    if key.char == 'a' and rectX1 > 0:
-        canvas.move(playerPad, -playerPadSpeed*xFactor, 0)
+    if key.char == 'd' and pad_x2 < canvas_dimensions['width']:
+        canvas.move(player_pad, PLAYER_PAD_SPEED * width_factor, 0)
+    if key.char == 'a' and pad_x1 > 0:
+        canvas.move(player_pad, -PLAYER_PAD_SPEED * width_factor, 0)
 
-def destroyCollidedBlock(yVelocity):
-    global blocks, gameover, score
+def increase_y_velocity(y_velocity: int, amount: int):
+    '''
+    It returns Y_VELOCITY increased by AMOUNT if there is\n
+    availablity of increasing without going off MAXIMUM_Y_VELOCITY
+    '''
+    if 0 < y_velocity <= MAXIMUM_Y_VELOCITY - amount :
+        return y_velocity + amount
     
-    collisionsWithBall = list(canvas.find_overlapping(*canvas.coords(ball)))
+    elif -MAXIMUM_Y_VELOCITY + amount <= y_velocity < 0:
+        return y_velocity - amount
+    
+    else: 
+        return y_velocity
 
-    if len(collisionsWithBall) > 1 and playerPad not in collisionsWithBall:
-        collisionsWithBall.remove(ball)
-        collidedBlock = collisionsWithBall[0]
-        blocks.remove(collidedBlock)
-        canvas.delete(collidedBlock)
+def destroy_collided_block(y_velocity: int) -> int:
+    '''
+    It destroys any collided block(s) and returns new y_velocity
+    '''
+    global gameover, score
+    
+    # Store any canvas items appeared above the ball in a list
+    collisions_with_ball = list(canvas.find_overlapping(*canvas.coords(ball)))
 
-        # print(blocks)
-        # print(len(blocks))
+    # If there's other than the ball in those coords
+    # AND player_pad isn't with them
+    if len(collisions_with_ball) > 1 and player_pad not in collisions_with_ball:
+        Thread(target=lambda: play_sfx('block_destroyed')).start()
 
-        if not blocks:
-            canvas.destroy()
-            Label(gameWindow, text='!لقد فزت',
-                  fg="#1B8B5C", font=('', 16, 'bold')).pack(expand=True, fill='both', padx=200, pady=100)
-            gameover = True
-            return 0 
-        
-        if yVelocity > 0:
-            yVelocity += 1
-        else:
-            yVelocity -= 1
+        # Remove the ball to get only the collided block
+        collisions_with_ball.remove(ball)
+        collided_block = collisions_with_ball[0]
+        blocks_data['blocks list'].remove(collided_block)
+        canvas.delete(collided_block)
 
         score += 1
-        scoreLabel.config(text=str(score))
+        score_label.config(text=str(score))
+        
+        if score % 10 == 0 and score != 0: # Because 0 % 10 is also 0
+            Thread(target=lambda: play_sfx('ten_blocks_destroyed')).start()
 
-        _ = randint(1, 10)
-        return -yVelocity if _ > 4 else yVelocity
+        if check('win', not blocks_data['blocks list']): # It might be the last block
+            gameover = True
+
+        # Randomly, return velocity as it is
+        # so the ball continues breaking other blocks.
+        return -y_velocity if randint(1, 10) > 4 else y_velocity
     else:
-        return yVelocity
+        return y_velocity # Continue your way; As there is no collision with any block
 
-def spawnBall(yVelocity):
+def spawn_ball(y_velocity):
+    '''
+    It creates the BALL and return X_VELOCITY and Y_VELOCITY
+    in a way that the BALL go up right
+    '''
     global ball
-
     ball = canvas.create_oval(10,
-                              height-10,
+                              canvas_dimensions['height']-10,
                               40,
-                              height-40,
+                              canvas_dimensions['height']-40,
                               fill='red')
-    return (10, -abs(yVelocity)) # x, y (velocity)
+    return (10, -abs(y_velocity)) # x and y velocity
 
-def ballMovementLogic(xVelocity = 10, yVelocity = -10):
+def ball_movement_logic(x_velocity = 10, y_velocity = -10):
+    '''
+    It holds the ball movement logic, and mostly about inflections.
+    '''
     global gameover, lives
 
     if gameover:
         return
     else:
-        ballCoords = canvas.coords(ball)
-        x1, y1, x2, y2 = [round(v) for v in ballCoords]
+        ball_coords = canvas.coords(ball)
+        x1, y1, x2, y2 = [round(v) for v in ball_coords]
 
-        if x2 > width or x1 < 0:
-            xVelocity = -xVelocity
+        if x2 > canvas_dimensions['width'] or x1 < 0: # If the ball reaches an edge on the right/left
+            x_velocity = -x_velocity
 
-        if y1 < 0:
-            yVelocity = abs(yVelocity)
-            if yVelocity < 20: yVelocity += 3
-
+        if y1 < 0: # If the ball reaches the top edge
+            y_velocity = abs(y_velocity)
+            y_velocity = increase_y_velocity(y_velocity, 3)
         
-        if y2 > height:
+        if y2 > canvas_dimensions['height']: # If the ball reaches the bottom edge (not striked by the player's pad)
             lives -= 1
-            livesLabel.config(text=f'{str(lives)} :المحاولات')
+            lives_label.config(text=f'{str(lives)} :المحاولات')
 
-            if lives < 1:
-                canvas.destroy()
-                Label(gameWindow, text='!لقد خسرت',
-                      fg='red', font=('', 16, 'bold')).pack(expand=True, fill='both', padx=200, pady=100)
+            if check('lose', lives < 1):
                 gameover = True
                 return
             else:
                 canvas.delete(ball)
-                xVelocity, yVelocity = spawnBall(yVelocity)
+                x_velocity, y_velocity = spawn_ball(y_velocity)
 
-        if yVelocity > 0 and ball in canvas.find_overlapping(*canvas.coords(playerPad)):
-            yVelocity = -abs(yVelocity)
+        # If the player's pad got overlapped by the ball (striked the ball)
+        if y_velocity > 0 and ball in canvas.find_overlapping(*canvas.coords(player_pad)):
+            y_velocity = -abs(y_velocity)
 
-        canvas.move(ball, xVelocity, yVelocity)
-        yVelocity = destroyCollidedBlock(yVelocity)
-        canvas.after(DELAY, lambda: ballMovementLogic(xVelocity, yVelocity))
+        canvas.move(ball, x_velocity, y_velocity)
+        y_velocity = destroy_collided_block(y_velocity)
 
-def generateBlocks():
-    global blocks
+        # So the ball movement logic continue until GAMEOVER
+        canvas.after(DELAY, lambda: ball_movement_logic(x_velocity, y_velocity))
 
-    blocks = []
-    
-    blockY = 10
-    for row in range(rowsNumber):
-        blockX = 10
-        for i in range(blocksNumber):
+def generate_blocks():
+    '''
+    It creates blocks according to blocks_data, BLOCK_WIDTH and BLOCK_HEIGHT
+    '''
+    block_y = 10
+    for row in range(blocks_data['rows number']):
+        block_x = 10
+        for i in range(blocks_data['blocks number']):
             color = '#' + ''.join(choices(HEXADECIMALS, k=6))
-            blocks.append(canvas.create_rectangle(blockX,
-                                                blockY,
-                                                blockX + BLOCK_WIDTH,
-                                                blockY + BLOCK_HEIGHT,
+            blocks_data['blocks list'].append(canvas.create_rectangle(block_x,
+                                                block_y,
+                                                block_x + BLOCK_WIDTH,
+                                                block_y + BLOCK_HEIGHT,
                                                 fill=color))
-            blockX += BLOCK_WIDTH + GAP
+            block_x += BLOCK_WIDTH + GAP
 
-        blockY += BLOCK_HEIGHT + GAP
+        block_y += BLOCK_HEIGHT + GAP
 
-def play():
-    global gameWindow, playerPad, ball, scoreLabel, livesLabel, canvas, gameover, score, lives
+def open_game_window():
+    '''
+    It opens the game_window and creates its components to start playing
+    '''
+    global game_window, player_pad, player_pad_width, ball, score_label, lives_label, canvas, gameover, score, lives
+
+    Thread(target=lambda: play_sfx('menu_btn_clicked')).start()
 
     score = 0
     lives = 3
     gameover = False
 
-    gameWindow = Toplevel(window, width=width, height=height)
-    gameWindow.resizable(False, False)
+    game_window = Toplevel(window, width=canvas_dimensions['width'], height=canvas_dimensions['height'])
+    game_window.resizable(False, False)
     '''
-    حدد القيمة الأساسية واضربها في باقي العوامل
-    عشان مهما تغيرت اعدادات اللعبة تكون مضبوطة
-    +
     اكتب ملاحظات وارفع على قيت هب واسجل مقطع ختامي
     +
     عدد المستطيلات حسب العرض
     '''
-    canvas = Canvas(gameWindow, width=width, height=height, bg='black')
+    canvas = Canvas(game_window, width=canvas_dimensions['width'], height=canvas_dimensions['height'], bg='black')
     canvas.pack()
-
-    padWidth = 100
-    padWidth = padWidth/2 * xFactor
-    playerPad = canvas.create_rectangle(width/2 - padWidth,
-                                        height-30,
-                                        width/2 + padWidth,
-                                        height-10,
-                                        fill='white')
+    
+    player_pad_width = player_pad_width/2 * width_factor
+    player_pad = canvas.create_rectangle(canvas_dimensions['width']/2 - player_pad_width,
+                                         canvas_dimensions['height']-30,
+                                         canvas_dimensions['width']/2 + player_pad_width,
+                                         canvas_dimensions['height']-10,
+                                         fill='white')
 
     ball = canvas.create_oval(10,
-                              height-10,
+                              canvas_dimensions['height']-10,
                               40,
-                              height-40,
+                              canvas_dimensions['height']-40,
                               fill='red')
     
-    scoreLabel = Label(gameWindow, text=str(score), bg='black', fg='white', font=('', 16, 'bold'))
-    livesLabel = Label(gameWindow, text=f'{str(lives)} :المحاولات', bg='black', fg='white', font=('', 16, 'bold'))
+    score_label = Label(game_window, text=str(score), bg='black', fg='lightblue', font=('', 16, 'bold'))
+    lives_label = Label(game_window, text=f'{str(lives)} :المحاولات', bg='black', fg='lightblue', font=('', 16, 'bold'))
 
-    scoreLabel.pack(expand=True, fill='both')
-    livesLabel.pack(expand=True, fill='both')
+    score_label.pack(expand=True, fill='both')
+    lives_label.pack(expand=True, fill='both')
 
-    generateBlocks()
-    ballMovementLogic()
+    generate_blocks()
+    ball_movement_logic()
 
-    gameWindow.focus()
-    gameWindow.bind('<Key>', movePlayerPad)
-    gameWindow.bind('<Destroy>', lambda _: playBtn.config(state='normal'))
+    game_window.focus()
+    game_window.bind('<Key>', move_player_pad)
+    game_window.bind('<Destroy>', lambda _: playBtn.config(state='normal'))
 
     playBtn.config(state='disabled')
 
-def checkValuesValidaty(*args: int):
+def putMaxSettings(*args):
+    ...
+
+def check_values_validaty(*args: int):
     '''
-    should be ordered that way:
+    the ARGS should be ordered that way:
         0. width
-        1. height
+        1. canvas_dimensions['height']
         2. blocksNumber 
         3. rowsNumber
     '''
@@ -202,10 +268,7 @@ def checkValuesValidaty(*args: int):
         showerror('خطأ', 'عرض/طول لوحة اللعب لا تكفي\nجرب تغيير بعض القيم، كالطول والعرض، أو عدد المستطيلات والصفوف')
         return False
 
-                        #  25 >= args[2] >= 10, # checked before
-                        #  6 >= args[3] >= 3]  # checked before
-    # print(validValuesRanges)
-    validValuesRanges = [1000 >= args[0] >= 600, 600 >= args[1] >= 400]
+    validValuesRanges = [1200 >= args[0] >= 600, 600 >= args[1] >= 400]
     valuesAreValid = all(validValuesRanges)
 
     if valuesAreValid:
@@ -214,48 +277,62 @@ def checkValuesValidaty(*args: int):
         showerror('خطأ', 'يجب إدخال قيم متناسبة مع النطاق المذكور')
         return False
 
-def saveSettings(*args):
-    global settingsWindow, width, height, blocksNumber, rowsNumber, xFactor
+def save_settings(*args):
+    global settings_window, width_factor, adaptPadToWidthVar
 
     try:
         args = [int(arg) for arg in args]
     except ValueError:
         showerror('خطأ', 'يجب إدخال القيم على صورة أعداد صحيحة فقط')
     else:
-        if checkValuesValidaty(*args):
-            xFactor = args[0] / width
-            width, height, blocksNumber, rowsNumber = args
-            settingsWindow.destroy()
+        if check_values_validaty(*args):
+            width_factor = args[0] / canvas_dimensions['width'] if adaptPadToWidthVar.get() else 1
+            canvas_dimensions['width'], canvas_dimensions['height'], blocks_data['blocks number'], blocks_data['rows number'] = args
+            settings_window.destroy()
+            Thread(target=lambda: play_sfx('settings_saved')).start()
 
-def openSettings():
-    global blocksNumber, rowsNumber, settingsWindow
+            # print(adaptPadToWidthVar.get())
 
-    settingsWindow = Toplevel(window)
-    settingsWindow.title('الإعدادات')
-    settingsWindow.config(bg='black')
-    settingsWindow.minsize(250, 300)
-    settingsWindow.maxsize(250, 300)
+def open_settings():
+    global blocksNumber, rowsNumber, settings_window, adaptPadToWidthVar
 
-    settingsList = {('عرض لوحة اللعب (النطاق 600-1200)', width): Entry(settingsWindow, justify='center'),
-                    ('طول لوحة اللعب (النطاق 400-800)', height): Entry(settingsWindow, justify='center'),
-                    ('عدد المربعات لكل صف', blocksNumber): Entry(settingsWindow, justify='center'),
-                    ('عدد الصفوف', rowsNumber): Entry(settingsWindow, justify='center')}
+    Thread(target=lambda: play_sfx('menu_btn_clicked')).start()
+
+    settings_window = Toplevel(window)
+    settings_window.title('الإعدادات')
+    settings_window.config(bg='black')
+    settings_window.minsize(250, 400)
+    settings_window.maxsize(250, 400)
+
+    settingsList = {('عرض لوحة اللعب (النطاق 600-1200)', canvas_dimensions['width']): Entry(settings_window, justify='center'),
+                    ('طول لوحة اللعب (النطاق 400-800)', canvas_dimensions['height']): Entry(settings_window, justify='center'),
+                    ('عدد المربعات لكل صف', blocks_data['blocks number']): Entry(settings_window, justify='center'),
+                    ('عدد الصفوف', blocks_data['rows number']): Entry(settings_window, justify='center')}
     
+    adaptPadToWidthBtn = Checkbutton(settings_window, text='يتأقلم المِضرَب مع حجم لوحة اللعب',
+                                     bg='black', fg='lightblue',
+                                     variable=adaptPadToWidthVar,
+                                     onvalue=1, offvalue=0,
+                                     selectcolor="#464646")
+    adaptPadToWidthBtn.pack(expand=True, fill='x', ipady=10)
+
     for item in settingsList.items():
-        Label(settingsWindow, text=item[0][0], bg='black', fg='lightblue').pack(padx=20, pady=5)
+        Label(settings_window, text=item[0][0], bg='black', fg='lightblue').pack(padx=20, pady=5)
         item[1].pack(padx=20, pady=5)
         item[1].insert(0, str(item[0][1]))
 
-    saveBtn = Button(settingsWindow, text='حفظ', bg='black', fg='lightblue', relief='sunken',
-                     command=lambda: saveSettings(*[e.get() for e in settingsList.values()]))
-    saveBtn.pack(expand=True, fill='both', pady=(10, 0), ipady=10)
+    largestSettingsBtn = Button(settings_window, BTN_STYLING_STYLE, text='تحديد الإعدادات القصوى',
+                                command=lambda: putMaxSettings(*[e.get() for e in settingsList.values()]))
+
+    saveBtn = Button(settings_window, BTN_STYLING_STYLE, text='حفظ', 
+                     command=lambda: save_settings(*[e.get() for e in settingsList.values()]))
+    
+    largestSettingsBtn.pack(BTN_PACK, pady=(10, 0), ipady=10)
+    saveBtn.pack(BTN_PACK, ipady=10)
 
     settingsBtn.config(state='disabled')
-    settingsWindow.bind('<Destroy>', lambda _: settingsBtn.config(state='normal'))
+    settings_window.bind('<Destroy>', lambda _: settingsBtn.config(state='normal'))
     
-# def f():
-#     blocksNumber = (width - ((width//50)*10))//50 - 2
-#     print(f'{blocksNumber=}')
 
 window = Tk()
 window.title('مُدَمِّر المُستَطِيلات')
@@ -273,20 +350,19 @@ except Exception as e:
 else:
     titleImageLabel = Label(window, bg='black', image=titleImage, bd=0)
 
-playBtn = Button(window, text='العب', font=('', 16, 'bold'),
-                  bg='black', fg='lightblue', relief='sunken',
-                  command=play)
+playBtn = Button(window, BTN_STYLING_STYLE, text='العب', font=('', 16, 'bold'), command=open_game_window)
 
-settingsBtn = Button(window, text='إعدادات اللعبة', font=('', 16, 'bold'),
-                  bg='black', fg='lightblue', relief='sunken', bd=0,
-                  command=openSettings)
+settingsBtn = Button(window, BTN_STYLING_STYLE, text='إعدادات اللعبة',
+                    font=('', 16, 'bold'), command=open_settings)
+
+adaptPadToWidthVar = BooleanVar(value=True)
+
 if hasTitleImage:
     titleImageLabel.pack(expand=True, fill='x')
 else:
     titleImageLabel.pack(ipadx=100, ipady=50)
 
-playBtn.pack(expand=True, fill='x', ipady=20)
-settingsBtn.pack(expand=True, fill='x', ipady=20)
-
+playBtn.pack(BTN_PACK)
+settingsBtn.pack(BTN_PACK)
 
 window.mainloop()
