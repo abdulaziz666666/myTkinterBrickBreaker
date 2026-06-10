@@ -9,7 +9,7 @@ from threading import Thread
 
 # Canvas Dimensions
 canvas_dimensions = {'width': 600, 'height': 400}
-
+BASE_WIDTH = 600
 # Blocks Values
 GAP = 10
 BLOCK_WIDTH = 50
@@ -20,20 +20,22 @@ blocks_data = {'blocks number': 10, 'rows number': 3, 'blocks list': []}
 gameover = False
 score = 0
 lives = 3
+width_factor = 1
 
 # Constants
-BTN_STYLING_STYLE = {'bg': 'black', 'fg': 'lightblue', 'relief': 'sunken'}
+BTN_STYLE = {'bg': 'black', 'fg': 'lightblue', 'relief': 'sunken'}
+LABEL_STYLE = {'bg': 'black', 'fg': 'lightblue', 'font': ('', 16, 'bold')}
 WIN_LOSE_LABEL_STYLE = {'win': {'text': '!لقد فزت', 'fg': '#1B8B5C'},
-                             'lose': {'text': '!لقد خسرت', 'fg': 'red'}}
+                        'lose': {'text': '!لقد خسرت', 'fg': 'red'}}
 BTN_PACK = {'expand': True, 'fill': 'both', 'ipady': 20}
 WIN_LOSE_LABEL_PACK = {'expand': True, 'fill': 'both', 'padx': 200, 'pady': 100}
 
 HEXADECIMALS = '123456789ABCDEF'
 DELAY = 50
-player_pad_width = 100 # Might be affected by width_factor
+BASE_PLAYER_PAD_WIDTH = 100 # Might be affected by width_factor
 PLAYER_PAD_SPEED = 20 # The overall value of player pad speed might be affected by width_factor
 MAXIMUM_Y_VELOCITY = 20 # Any value over that isn't capable. Tkinter can't process fast movements
-
+MAXIMUM_SETTINGS = (1000, 600, 16, 7)
 
 def play_sfx(sfxName: str):
     '''
@@ -42,7 +44,7 @@ def play_sfx(sfxName: str):
     try:
 
         if sfxName == 'lose':
-            sfxName = choice(('los', 'lose2', 'lose3'))
+            sfxName = choice(('lose', 'lose2', 'lose3'))
         
         playsound(f'sfx/{sfxName}.wav', block=False)
 
@@ -208,6 +210,7 @@ def open_game_window():
 
     Thread(target=lambda: play_sfx('menu_btn_clicked')).start()
 
+    # Resetting the in-game variables
     score = 0
     lives = 3
     gameover = False
@@ -222,21 +225,24 @@ def open_game_window():
     canvas = Canvas(game_window, width=canvas_dimensions['width'], height=canvas_dimensions['height'], bg='black')
     canvas.pack()
     
-    player_pad_width = player_pad_width/2 * width_factor
+    player_pad_width = (BASE_PLAYER_PAD_WIDTH/2) * width_factor
+    print(player_pad_width)
     player_pad = canvas.create_rectangle(canvas_dimensions['width']/2 - player_pad_width,
                                          canvas_dimensions['height']-30,
                                          canvas_dimensions['width']/2 + player_pad_width,
                                          canvas_dimensions['height']-10,
                                          fill='white')
-
+    '''
+    spawn_ball()
+    '''
     ball = canvas.create_oval(10,
                               canvas_dimensions['height']-10,
                               40,
                               canvas_dimensions['height']-40,
                               fill='red')
     
-    score_label = Label(game_window, text=str(score), bg='black', fg='lightblue', font=('', 16, 'bold'))
-    lives_label = Label(game_window, text=f'{str(lives)} :المحاولات', bg='black', fg='lightblue', font=('', 16, 'bold'))
+    score_label = Label(game_window, LABEL_STYLE, text=str(score))
+    lives_label = Label(game_window, LABEL_STYLE, text=f'{str(lives)} :المحاولات')
 
     score_label.pack(expand=True, fill='both')
     lives_label.pack(expand=True, fill='both')
@@ -250,51 +256,61 @@ def open_game_window():
 
     playBtn.config(state='disabled')
 
-def putMaxSettings(*args):
-    ...
+def set_max_settings():
+    global settings_list
+    for entry, value in zip(settings_list.values(), MAXIMUM_SETTINGS):
+        entry.delete(0, 'end')
+        entry.insert(0, str(value))
 
-def check_values_validaty(*args: int):
+def check_validaty(*args: int):
     '''
+    It checks if the values entered to entries are valid. Returns True if so. Otherwise, returns False.\n
+    Valid values are: integers, inside mentioned range, capable with canvas dimensions.\n\n
     the ARGS should be ordered that way:
-        0. width
+        0. canvas_dimensions['width']
         1. canvas_dimensions['height']
-        2. blocksNumber 
-        3. rowsNumber
+        2. blocks_data['blocks number']
+        3. blocks_data['rows number']
     '''
-    horizontalSpaceNeeded = GAP + (BLOCK_WIDTH + GAP) * args[2] 
-    verticalSpaceNeeded = GAP + (BLOCK_HEIGHT + GAP) * args[3] 
+    horizontal_space_needed = GAP + (BLOCK_WIDTH + GAP) * args[2] 
+    vertical_space_needed = GAP + (BLOCK_HEIGHT + GAP) * args[3] 
 
-    if horizontalSpaceNeeded >= args[0] + 20 or verticalSpaceNeeded >= args[1] // 2:
+    if horizontal_space_needed >= args[0] + 20 or vertical_space_needed >= args[1] // 2:
         showerror('خطأ', 'عرض/طول لوحة اللعب لا تكفي\nجرب تغيير بعض القيم، كالطول والعرض، أو عدد المستطيلات والصفوف')
         return False
 
-    validValuesRanges = [1200 >= args[0] >= 600, 600 >= args[1] >= 400]
-    valuesAreValid = all(validValuesRanges)
+    valid_values_ranges = [1200 >= args[0] >= 600, 600 >= args[1] >= 400]
+    values_are_valid = all(valid_values_ranges)
 
-    if valuesAreValid:
+    if values_are_valid:
         return True
     else:
         showerror('خطأ', 'يجب إدخال قيم متناسبة مع النطاق المذكور')
         return False
 
 def save_settings(*args):
-    global settings_window, width_factor, adaptPadToWidthVar
+    '''
+    It modifies the canvas & blocks data according to the entered values\n
+    from settings entries if check_validaty() returns True.\n Otherwise, it won't modifies anything.
+    '''
+    global settings_window, width_factor, tkvar_adapt_pad_to_width
 
     try:
         args = [int(arg) for arg in args]
     except ValueError:
         showerror('خطأ', 'يجب إدخال القيم على صورة أعداد صحيحة فقط')
     else:
-        if check_values_validaty(*args):
-            width_factor = args[0] / canvas_dimensions['width'] if adaptPadToWidthVar.get() else 1
+        if check_validaty(*args):
+            width_factor = args[0] / BASE_WIDTH if tkvar_adapt_pad_to_width.get() else 1
             canvas_dimensions['width'], canvas_dimensions['height'], blocks_data['blocks number'], blocks_data['rows number'] = args
             settings_window.destroy()
             Thread(target=lambda: play_sfx('settings_saved')).start()
 
-            # print(adaptPadToWidthVar.get())
-
 def open_settings():
-    global blocksNumber, rowsNumber, settings_window, adaptPadToWidthVar
+    '''
+    It opens the settings_window and creates its components to show settings menu
+    '''
+    global settings_window, tkvar_adapt_pad_to_width, settings_list
 
     Thread(target=lambda: play_sfx('menu_btn_clicked')).start()
 
@@ -304,28 +320,28 @@ def open_settings():
     settings_window.minsize(250, 400)
     settings_window.maxsize(250, 400)
 
-    settingsList = {('عرض لوحة اللعب (النطاق 600-1200)', canvas_dimensions['width']): Entry(settings_window, justify='center'),
-                    ('طول لوحة اللعب (النطاق 400-800)', canvas_dimensions['height']): Entry(settings_window, justify='center'),
+    settings_list = {('عرض لوحة اللعب (النطاق 600-1200)', canvas_dimensions['width']): Entry(settings_window, justify='center'),
+                    ('طول لوحة اللعب (النطاق 400-600)', canvas_dimensions['height']): Entry(settings_window, justify='center'),
                     ('عدد المربعات لكل صف', blocks_data['blocks number']): Entry(settings_window, justify='center'),
                     ('عدد الصفوف', blocks_data['rows number']): Entry(settings_window, justify='center')}
     
     adaptPadToWidthBtn = Checkbutton(settings_window, text='يتأقلم المِضرَب مع حجم لوحة اللعب',
                                      bg='black', fg='lightblue',
-                                     variable=adaptPadToWidthVar,
+                                     variable=tkvar_adapt_pad_to_width,
                                      onvalue=1, offvalue=0,
                                      selectcolor="#464646")
-    adaptPadToWidthBtn.pack(expand=True, fill='x', ipady=10)
+    adaptPadToWidthBtn.pack(BTN_PACK, ipady=10)
 
-    for item in settingsList.items():
+    for item in settings_list.items():
         Label(settings_window, text=item[0][0], bg='black', fg='lightblue').pack(padx=20, pady=5)
         item[1].pack(padx=20, pady=5)
         item[1].insert(0, str(item[0][1]))
 
-    largestSettingsBtn = Button(settings_window, BTN_STYLING_STYLE, text='تحديد الإعدادات القصوى',
-                                command=lambda: putMaxSettings(*[e.get() for e in settingsList.values()]))
+    largestSettingsBtn = Button(settings_window, BTN_STYLE, text='تحديد الإعدادات القصوى',
+                                command=set_max_settings)
 
-    saveBtn = Button(settings_window, BTN_STYLING_STYLE, text='حفظ', 
-                     command=lambda: save_settings(*[e.get() for e in settingsList.values()]))
+    saveBtn = Button(settings_window, BTN_STYLE, text='حفظ', 
+                     command=lambda: save_settings(*[e.get() for e in settings_list.values()]))
     
     largestSettingsBtn.pack(BTN_PACK, pady=(10, 0), ipady=10)
     saveBtn.pack(BTN_PACK, ipady=10)
@@ -334,13 +350,14 @@ def open_settings():
     settings_window.bind('<Destroy>', lambda _: settingsBtn.config(state='normal'))
     
 
+# Create main window
 window = Tk()
 window.title('مُدَمِّر المُستَطِيلات')
 window.config(bg='black')
 window.resizable(False, False)
 
 hasTitleImage = True
-try:
+try: # to prevent any errors if the image somehow get lost
     titleImage = PhotoImage(file='title.png')
 except Exception as e:
     titleImageLabel = Label(window, text='مُدَمِّر المُستَطِيلات',
@@ -350,12 +367,12 @@ except Exception as e:
 else:
     titleImageLabel = Label(window, bg='black', image=titleImage, bd=0)
 
-playBtn = Button(window, BTN_STYLING_STYLE, text='العب', font=('', 16, 'bold'), command=open_game_window)
+playBtn = Button(window, BTN_STYLE, text='العب', font=('', 16, 'bold'), command=open_game_window)
 
-settingsBtn = Button(window, BTN_STYLING_STYLE, text='إعدادات اللعبة',
+settingsBtn = Button(window, BTN_STYLE, text='إعدادات اللعبة',
                     font=('', 16, 'bold'), command=open_settings)
 
-adaptPadToWidthVar = BooleanVar(value=True)
+tkvar_adapt_pad_to_width = BooleanVar(value=True)
 
 if hasTitleImage:
     titleImageLabel.pack(expand=True, fill='x')
