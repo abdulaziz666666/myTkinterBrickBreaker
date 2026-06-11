@@ -10,20 +10,24 @@ from threading import Thread
 # Canvas Dimensions
 canvas_dimensions = {'width': 600, 'height': 400}
 BASE_WIDTH = 600
+
 # Blocks Values
 GAP = 10
 BLOCK_WIDTH = 50
 BLOCK_HEIGHT = 30
 blocks_data = {'blocks number': 10, 'rows number': 3, 'blocks list': []}
 
-# In-game Variables
-gameover = False
-score = 0
-lives = 3
-width_factor = 1
+# Game State Dictionary
+BASE_GAME_STATE = {
+    'gameover': False,
+    'score': 0,
+    'lives': 3,
+    'width factor': 1
+}
+game_state = BASE_GAME_STATE
 
 # Constants
-BTN_STYLE = {'bg': 'black', 'fg': 'lightblue', 'relief': 'sunken'}
+BTN_STYLE = {'bg': 'black', 'fg': 'lightblue', 'bd': 0}
 LABEL_STYLE = {'bg': 'black', 'fg': 'lightblue', 'font': ('', 16, 'bold')}
 WIN_LOSE_LABEL_STYLE = {'win': {'text': '!لقد فزت', 'fg': '#1B8B5C'},
                         'lose': {'text': '!لقد خسرت', 'fg': 'red'}}
@@ -32,21 +36,22 @@ WIN_LOSE_LABEL_PACK = {'expand': True, 'fill': 'both', 'padx': 200, 'pady': 100}
 
 HEXADECIMALS = '123456789ABCDEF'
 DELAY = 50
-BASE_PLAYER_PAD_WIDTH = 100 # Might be affected by width_factor
-PLAYER_PAD_SPEED = 20 # The overall value of player pad speed might be affected by width_factor
+BASE_PLAYER_PAD_WIDTH = 100 # Might be affected by game_state['width factor']
+PLAYER_PAD_SPEED = 20 # The overall value of player pad speed might be affected by game_state['width factor']
 MAXIMUM_Y_VELOCITY = 20 # Any value over that isn't capable. Tkinter can't process fast movements
-MAXIMUM_SETTINGS = (1000, 600, 16, 7)
+SETTINGS_TYPE = {'min': (600, 400, 10, 3),
+                 'max': (1200, 600, 20, 7)}
 
-def play_sfx(sfxName: str):
+def play_sfx(sfx_name: str):
     '''
     It plays sound effects from the folder 'sfx'.
     '''
     try:
 
-        if sfxName == 'lose':
-            sfxName = choice(('lose', 'lose2', 'lose3'))
+        if sfx_name == 'lose':
+            sfx_name = choice(('lose', 'lose2', 'lose3'))
         
-        playsound(f'sfx/{sfxName}.wav', block=False)
+        playsound(f'sfx/{sfx_name}.wav', block=False)
 
     except Exception as e: # Just to prevent any error from occurrence. Its just a sound effect anyway.
         print(e)
@@ -71,16 +76,16 @@ def move_player_pad(key):
     depending on any keyboard input which's represented
     by key.
     '''
-    if gameover:
+    if game_state['gameover']:
         return 
     
     pad_x1 = canvas.coords(player_pad)[0]
     pad_x2 = canvas.coords(player_pad)[2]
 
-    if key.char == 'd' and pad_x2 < canvas_dimensions['width']:
-        canvas.move(player_pad, PLAYER_PAD_SPEED * width_factor, 0)
-    if key.char == 'a' and pad_x1 > 0:
-        canvas.move(player_pad, -PLAYER_PAD_SPEED * width_factor, 0)
+    if (key.char == 'd' or key.keysym == 'Right') and pad_x2 < canvas_dimensions['width']:
+        canvas.move(player_pad, PLAYER_PAD_SPEED * game_state['width factor'], 0)
+    if (key.char == 'a' or key.keysym == 'Left') and pad_x1 > 0:
+        canvas.move(player_pad, -PLAYER_PAD_SPEED * game_state['width factor'], 0)
 
 def increase_y_velocity(y_velocity: int, amount: int):
     '''
@@ -100,7 +105,7 @@ def destroy_collided_block(y_velocity: int) -> int:
     '''
     It destroys any collided block(s) and returns new y_velocity
     '''
-    global gameover, score
+    global game_state
     
     # Store any canvas items appeared above the ball in a list
     collisions_with_ball = list(canvas.find_overlapping(*canvas.coords(ball)))
@@ -116,14 +121,16 @@ def destroy_collided_block(y_velocity: int) -> int:
         blocks_data['blocks list'].remove(collided_block)
         canvas.delete(collided_block)
 
-        score += 1
-        score_label.config(text=str(score))
+        game_state['score'] += 1
+        score_label.config(text=str(game_state['score']))
         
-        if score % 10 == 0 and score != 0: # Because 0 % 10 is also 0
+        y_velocity = increase_y_velocity(y_velocity, 1)
+
+        if game_state['score'] % 10 == 0 and game_state['score'] != 0: # Because 0 % 10 is also 0
             Thread(target=lambda: play_sfx('ten_blocks_destroyed')).start()
 
         if check('win', not blocks_data['blocks list']): # It might be the last block
-            gameover = True
+            game_state['gameover'] = True
 
         # Randomly, return velocity as it is
         # so the ball continues breaking other blocks.
@@ -148,9 +155,9 @@ def ball_movement_logic(x_velocity = 10, y_velocity = -10):
     '''
     It holds the ball movement logic, and mostly about inflections.
     '''
-    global gameover, lives
+    global game_state
 
-    if gameover:
+    if game_state['gameover']:
         return
     else:
         ball_coords = canvas.coords(ball)
@@ -164,11 +171,11 @@ def ball_movement_logic(x_velocity = 10, y_velocity = -10):
             y_velocity = increase_y_velocity(y_velocity, 3)
         
         if y2 > canvas_dimensions['height']: # If the ball reaches the bottom edge (not striked by the player's pad)
-            lives -= 1
-            lives_label.config(text=f'{str(lives)} :المحاولات')
+            game_state['lives'] -= 1
+            lives_label.config(text=f'{str(game_state['lives'])} :المحاولات')
 
-            if check('lose', lives < 1):
-                gameover = True
+            if check('lose', game_state['lives'] < 1):
+                game_state['gameover'] = True
                 return
             else:
                 canvas.delete(ball)
@@ -181,7 +188,7 @@ def ball_movement_logic(x_velocity = 10, y_velocity = -10):
         canvas.move(ball, x_velocity, y_velocity)
         y_velocity = destroy_collided_block(y_velocity)
 
-        # So the ball movement logic continue until GAMEOVER
+        # So the ball movement logic continue until game_state['gameover']
         canvas.after(DELAY, lambda: ball_movement_logic(x_velocity, y_velocity))
 
 def generate_blocks():
@@ -206,43 +213,38 @@ def open_game_window():
     '''
     It opens the game_window and creates its components to start playing
     '''
-    global game_window, player_pad, player_pad_width, ball, score_label, lives_label, canvas, gameover, score, lives
+    global game_window, player_pad, player_pad_width, ball, score_label, lives_label, canvas, game_state
 
     Thread(target=lambda: play_sfx('menu_btn_clicked')).start()
 
     # Resetting the in-game variables
-    score = 0
-    lives = 3
-    gameover = False
+    game_state['gameover'] = False
+    game_state['lives'] = 3
+    game_state['score'] = 0
 
     game_window = Toplevel(window, width=canvas_dimensions['width'], height=canvas_dimensions['height'])
     game_window.resizable(False, False)
     '''
-    اكتب ملاحظات وارفع على قيت هب واسجل مقطع ختامي
-    +
     عدد المستطيلات حسب العرض
     '''
     canvas = Canvas(game_window, width=canvas_dimensions['width'], height=canvas_dimensions['height'], bg='black')
     canvas.pack()
     
-    player_pad_width = (BASE_PLAYER_PAD_WIDTH/2) * width_factor
+    player_pad_width = (BASE_PLAYER_PAD_WIDTH/2)
     print(player_pad_width)
     player_pad = canvas.create_rectangle(canvas_dimensions['width']/2 - player_pad_width,
                                          canvas_dimensions['height']-30,
                                          canvas_dimensions['width']/2 + player_pad_width,
                                          canvas_dimensions['height']-10,
                                          fill='white')
-    '''
-    spawn_ball()
-    '''
     ball = canvas.create_oval(10,
                               canvas_dimensions['height']-10,
                               40,
                               canvas_dimensions['height']-40,
                               fill='red')
     
-    score_label = Label(game_window, LABEL_STYLE, text=str(score))
-    lives_label = Label(game_window, LABEL_STYLE, text=f'{str(lives)} :المحاولات')
+    score_label = Label(game_window, LABEL_STYLE, text=str(game_state['score']))
+    lives_label = Label(game_window, LABEL_STYLE, text=f'{str(game_state['lives'])} :المحاولات')
 
     score_label.pack(expand=True, fill='both')
     lives_label.pack(expand=True, fill='both')
@@ -252,15 +254,21 @@ def open_game_window():
 
     game_window.focus()
     game_window.bind('<Key>', move_player_pad)
-    game_window.bind('<Destroy>', lambda _: playBtn.config(state='normal'))
+    game_window.bind('<Destroy>', lambda _: play_btn.config(state='normal'))
 
-    playBtn.config(state='disabled')
+    play_btn.config(state='disabled')
 
-def set_max_settings():
-    global settings_list
-    for entry, value in zip(settings_list.values(), MAXIMUM_SETTINGS):
-        entry.delete(0, 'end')
-        entry.insert(0, str(value))
+def set_settings(selected_settings: str):
+    '''
+    It inserts the settings according to selected_settings into the settings_list entries
+    '''
+    if selected_settings in SETTINGS_TYPE.keys():
+        global settings_list
+        for entry, value in zip(settings_list.values(), SETTINGS_TYPE[selected_settings]):
+            entry.delete(0, 'end')
+            entry.insert(0, str(value))
+
+        Thread(target=lambda: play_sfx('menu_btn_clicked')).start()
 
 def check_validaty(*args: int):
     '''
@@ -293,7 +301,7 @@ def save_settings(*args):
     It modifies the canvas & blocks data according to the entered values\n
     from settings entries if check_validaty() returns True.\n Otherwise, it won't modifies anything.
     '''
-    global settings_window, width_factor, tkvar_adapt_pad_to_width
+    global settings_window, game_state, tkvar_adapt_pad_to_width
 
     try:
         args = [int(arg) for arg in args]
@@ -301,7 +309,7 @@ def save_settings(*args):
         showerror('خطأ', 'يجب إدخال القيم على صورة أعداد صحيحة فقط')
     else:
         if check_validaty(*args):
-            width_factor = args[0] / BASE_WIDTH if tkvar_adapt_pad_to_width.get() else 1
+            game_state['width factor'] = args[0] / BASE_WIDTH if tkvar_adapt_pad_to_width.get() else 1
             canvas_dimensions['width'], canvas_dimensions['height'], blocks_data['blocks number'], blocks_data['rows number'] = args
             settings_window.destroy()
             Thread(target=lambda: play_sfx('settings_saved')).start()
@@ -317,37 +325,47 @@ def open_settings():
     settings_window = Toplevel(window)
     settings_window.title('الإعدادات')
     settings_window.config(bg='black')
-    settings_window.minsize(250, 400)
-    settings_window.maxsize(250, 400)
+    settings_window.minsize(250, 450)
+    settings_window.maxsize(250, 450)
 
     settings_list = {('عرض لوحة اللعب (النطاق 600-1200)', canvas_dimensions['width']): Entry(settings_window, justify='center'),
                     ('طول لوحة اللعب (النطاق 400-600)', canvas_dimensions['height']): Entry(settings_window, justify='center'),
                     ('عدد المربعات لكل صف', blocks_data['blocks number']): Entry(settings_window, justify='center'),
                     ('عدد الصفوف', blocks_data['rows number']): Entry(settings_window, justify='center')}
     
-    adaptPadToWidthBtn = Checkbutton(settings_window, text='يتأقلم المِضرَب مع حجم لوحة اللعب',
+    adapt_pad_to_width_btn = Checkbutton(settings_window, text='تتأقلم سرعة المِضرَب مع حجم لوحة اللعب',
                                      bg='black', fg='lightblue',
                                      variable=tkvar_adapt_pad_to_width,
                                      onvalue=1, offvalue=0,
                                      selectcolor="#464646")
-    adaptPadToWidthBtn.pack(BTN_PACK, ipady=10)
+    adapt_pad_to_width_btn.pack(BTN_PACK, ipady=10)
 
     for item in settings_list.items():
         Label(settings_window, text=item[0][0], bg='black', fg='lightblue').pack(padx=20, pady=5)
         item[1].pack(padx=20, pady=5)
         item[1].insert(0, str(item[0][1]))
 
-    largestSettingsBtn = Button(settings_window, BTN_STYLE, text='تحديد الإعدادات القصوى',
-                                command=set_max_settings)
+    largest_settings_btn = Button(settings_window, BTN_STYLE, text='تحديد الإعدادات القصوى',
+                                command=lambda: set_settings('max'))
+    base_settings_btn = Button(settings_window, BTN_STYLE, text='إعادة ضبط الإعدادات',
+                                command=lambda: set_settings('min'))
 
-    saveBtn = Button(settings_window, BTN_STYLE, text='حفظ', 
+    save_btn = Button(settings_window, BTN_STYLE, text='حفظ', 
                      command=lambda: save_settings(*[e.get() for e in settings_list.values()]))
     
-    largestSettingsBtn.pack(BTN_PACK, pady=(10, 0), ipady=10)
-    saveBtn.pack(BTN_PACK, ipady=10)
+    base_settings_btn.pack(BTN_PACK, pady=10, ipady=10)
+    largest_settings_btn.pack(BTN_PACK, ipady=10)
+    save_btn.pack(BTN_PACK, ipady=10)
 
-    settingsBtn.config(state='disabled')
-    settings_window.bind('<Destroy>', lambda _: settingsBtn.config(state='normal'))
+    settings_btn.config(state='disabled')
+    settings_window.bind('<Destroy>', lambda _: settings_btn.config(state='normal'))
+    base_settings_btn.bind('<Enter>', lambda _: base_settings_btn.config(bg="#2F77A4", fg='white'))
+    base_settings_btn.bind('<Leave>', lambda _: base_settings_btn.config(bg='black', fg='lightblue'))
+    largest_settings_btn.bind('<Enter>', lambda _: largest_settings_btn.config(bg="#2F77A4", fg='white'))
+    largest_settings_btn.bind('<Leave>', lambda _: largest_settings_btn.config(bg='black', fg='lightblue'))
+    save_btn.bind('<Enter>', lambda _: save_btn.config(bg="#2F77A4", fg='white'))
+    save_btn.bind('<Leave>', lambda _: save_btn.config(bg='black', fg='lightblue'))
+
     
 
 # Create main window
@@ -356,30 +374,34 @@ window.title('مُدَمِّر المُستَطِيلات')
 window.config(bg='black')
 window.resizable(False, False)
 
-hasTitleImage = True
+has_title_image = True
 try: # to prevent any errors if the image somehow get lost
-    titleImage = PhotoImage(file='title.png')
+    title_image = PhotoImage(file='title.png')
 except Exception as e:
-    titleImageLabel = Label(window, text='مُدَمِّر المُستَطِيلات',
+    title_image_label = Label(window, text='مُدَمِّر المُستَطِيلات',
                              fg='lightblue', font=('', 24, 'bold'))
-    hasTitleImage = False
+    has_title_image = False
     print(e)
 else:
-    titleImageLabel = Label(window, bg='black', image=titleImage, bd=0)
+    title_image_label = Label(window, bg='black', image=title_image)
 
-playBtn = Button(window, BTN_STYLE, text='العب', font=('', 16, 'bold'), command=open_game_window)
+play_btn = Button(window, BTN_STYLE, text='العب', font=('', 16, 'bold'), command=open_game_window)
 
-settingsBtn = Button(window, BTN_STYLE, text='إعدادات اللعبة',
+settings_btn = Button(window, BTN_STYLE, text='إعدادات اللعبة', bd=0,
                     font=('', 16, 'bold'), command=open_settings)
 
 tkvar_adapt_pad_to_width = BooleanVar(value=True)
 
-if hasTitleImage:
-    titleImageLabel.pack(expand=True, fill='x')
+if has_title_image:
+    title_image_label.pack(expand=True, fill='x')
 else:
-    titleImageLabel.pack(ipadx=100, ipady=50)
+    title_image_label.pack(ipadx=100, ipady=50)
 
-playBtn.pack(BTN_PACK)
-settingsBtn.pack(BTN_PACK)
+play_btn.pack(BTN_PACK)
+settings_btn.pack(BTN_PACK)
 
+settings_btn.bind('<Enter>', lambda _: settings_btn.config(bg="#2F77A4", fg='white'))
+settings_btn.bind('<Leave>', lambda _: settings_btn.config(bg='black', fg='lightblue'))
+play_btn.bind('<Enter>', lambda _: play_btn.config(bg="#2F77A4", fg='white'))
+play_btn.bind('<Leave>', lambda _: play_btn.config(bg='black', fg='lightblue'))
 window.mainloop()
